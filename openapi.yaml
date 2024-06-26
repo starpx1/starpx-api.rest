@@ -1,0 +1,561 @@
+openapi: 3.0.0
+info:
+  title: StarPx API
+  version: 0.1.0
+  description: API for StarPx service, providing authentication and access token generation.
+servers:
+  - url: https://api.starpx.com/v1
+paths:
+  /authenticate:
+    post:
+      summary: Authenticate with a long-lived API key to receive a short-lived access token
+      description: |
+        Use this endpoint to authenticate with the starpx backend using your unique
+        long-lived API key which you can find in your user profile in the app or website. 
+        When authorized, it will return an access token which must be included in all
+        subsequent API calls (excluding this one).
+        
+        Each subsequent API call must contain the HTTP request header:
+        "Authorization: Bearer \<access token\>"
+      parameters:
+        - name: apiKey
+          in: header
+          required: true
+          schema:
+            type: string
+          description: The user's long-lived API key
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiVersion:
+                    type: string
+                    example: "0.1.0"
+                  accessToken:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  expiresIn:
+                    type: integer
+                    example: 57600  # 16 hours in seconds
+        '401':
+          description: Unauthorized - Invalid API key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - API key is invalid"
+  /imagingsession/new:
+    post:
+      summary: Create a new live imaging session
+      description: |
+        When you start imaging a new object you can call this method. It will 
+        create a new live imaging session in the backend. This allows you to upload
+        your RAW files as you capture them. In addition, you can request a live preview
+        to see how the image is progressing! When you finished collecting the RAW files
+        you simply call the `finish` method and the final stack will be immediately
+        processed into a final image. 
+        
+        You should only upload Light frames (of any filter type or bayered). As
+        with all of starpx, calibration frames are unnecessary and discouraged
+        since these take away valuable imaging time without significantly improving
+        the final image. Essentially, uploaded calibration frames are simply ignored
+        by starpx and can be completely eliminated from your imaging workflow. 
+        
+        You can freely mix any filter types in the upload and you do not need
+        to specify which filter a certain RAW frame is, starpx will figure this out.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewImagingSession'
+      responses:
+        '201':
+          description: Imaging session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imagingSessionId:
+                    type: string
+                    example: "abc123"
+        '400':
+          description: Bad request - Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errorMessage:
+                    type: string
+                    example: "Targetname is required"
+        '401':
+          description: Unauthorized - Invalid or missing access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - Invalid or missing access token"
+  /imagingsession/upload/{session-id}:
+    get:
+      summary: Get upload URLs for a new RAW file for the imaging session
+      description: |
+        Use this endpoint to request upload URLs for a freshly captured RAW file.
+        
+        Refer to [the backblaze API documentation how to use these](https://www.backblaze.com/apidocs/b2-get-upload-url) upload URLs.
+        The `fileId` is kept for future reference and is needed to indicate a file finished uploading by POST'ing to this URL.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: session-id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ID of the imaging session
+      responses:
+        '200':
+          description: Upload URLs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlateSolveResult'
+                properties:
+                  uploadUrls:
+                    type: array
+                    items:
+                      type: string
+                      example: "https://upload.example.com/part123"
+                  fileId:
+                    type: string
+                    example: "file123"
+        '400':
+          description: Bad request - Invalid session ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errorMessage:
+                    type: string
+                    example: "Invalid session ID"
+        '401':
+          description: Unauthorized - Invalid or missing access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - Invalid or missing access token"
+    post:
+      summary: Indicate the RAW file has finished uploading
+      description: |
+        Indicate you finished uploading a RAW file. 
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: session-id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ID of the imaging session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fileId:
+                  type: string
+                  example: "file123"
+      responses:
+        '200':
+          description: File upload completed successfully
+        '400':
+          description: Bad request - Missing or invalid file ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errorMessage:
+                    type: string
+                    example: "Missing or invalid file ID"
+        '401':
+          description: Unauthorized - Invalid or missing access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - Invalid or missing access token"
+  /imagingsession/live-preview/{session-id}:
+    get:
+      summary: Get live preview details of the imaging session
+      description: |
+        Request the most up-to-date live pre-view (live stacking) of the imaging session.
+        Typically, a few seconds after uploading a RAW file, the updated preview is ready.
+        
+        You can see a new pre-view is available by keeping track of the increasing sequence number.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: session-id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ID of the imaging session
+      responses:
+        '200':
+          description: Live preview details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  acceptedRawFrames:
+                    type: integer
+                    example: 100
+                    description: The number of RAW frames accepted by starpx
+                  rejectedRawFrames:
+                    type: integer
+                    example: 5
+                    description: The number of RAW frames rejected by starpx
+                  rawFramesUsedForPreview:
+                    type: integer
+                    example: 95
+                    description: The number of RAW frames used in this preview
+                  seq:
+                    type: integer
+                    example: 13
+                    description: The sequence number of this preview                
+                  livePreviewUrl:
+                    type: string
+                    example: "https://cdn.starpx.com/live/abcdef/abcdef/some_image.jpg"
+                    description: The URL of the preview JPG
+        '400':
+          description: Bad request - Invalid session ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errorMessage:
+                    type: string
+                    example: "Invalid session ID"
+        '401':
+          description: Unauthorized - Invalid or missing access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - Invalid or missing access token"                    
+  /imagingsession/finish/{session-id}:
+    post:
+      summary: Finish the imaging session and get the gallery link
+      description: |
+        Call this endpoint to inidicate you are finished with this imaging session.
+        
+        After a short while your processed image will appear in your gallery. 
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: session-id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ID of the imaging session
+      responses:
+        '200':
+          description: Imaging session finished successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  galleryUrl:
+                    type: string
+                    example: "https://gallery.example.com/session123"
+        '400':
+          description: Bad request - Invalid session ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errorMessage:
+                    type: string
+                    example: "Invalid session ID"
+        '401':
+          description: Unauthorized - Invalid or missing access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - Invalid or missing access token"
+  /platesolve:
+    post:
+      summary: Perform a plate solve operation
+      description: |
+        Call this to quickly platesolve an image.      
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlateSolveRequest'
+      responses:
+        '200':
+          description: Plate solve operation performed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlateSolveResult'
+        '400':
+          description: Bad request - Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errorMessage:
+                    type: string
+                    example: "Invalid sky coordinates"
+        '401':
+          description: Unauthorized - Invalid or missing access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - Invalid or missing access token"
+  /platesolve/{platesolve_id}:
+    get:
+      summary: Retrieve plate solve results using platesolve ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: platesolve_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier for the plate solve request
+      responses:
+        '200':
+          description: Plate solve results retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlateSolveResult'
+        '400':
+          description: Bad request - Invalid platesolve ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errorMessage:
+                    type: string
+                    example: "Invalid platesolve ID"
+        '401':
+          description: Unauthorized - Invalid or missing access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - Invalid or missing access token"                    
+                   
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: apiKey
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthenticationResponse:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+          example: "0.1.0"
+        accessToken:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expiresIn:
+          type: integer
+          example: 57600  # 16 hours in seconds
+    NewImagingSession:
+      type: object
+      properties:
+        localTime:
+          type: string
+          format: date-time
+          example: "2024-05-27T10:00:00Z"
+          nullable: true
+        geolocation:
+          type: object
+          properties:
+            lat:
+              type: number
+              format: float
+              example: 34.0522
+              nullable: true
+            lon:
+              type: number
+              format: float
+              example: -118.2437
+              nullable: true
+          nullable: true
+        targetname:
+          type: string
+          example: "Mars"
+          nullable: false
+        skycoordinates:
+          type: object
+          properties:
+            ra:
+              type: number
+              format: float
+              example: 14.660
+              nullable: true
+            dec:
+              type: number
+              format: float
+              example: -60.835
+              nullable: true
+          nullable: true
+    ImagingSessionResponse:
+      type: object
+      properties:
+        errorMessage:
+          type: string
+          example: "Targetname is required"
+        imagingSessionId:
+          type: string
+          example: "abc123"
+    PlateSolveRequest:
+      type: object
+      properties:
+        skyCoordinate:
+          type: object
+          properties:
+            ra:
+              type: number
+              format: double
+              description: Right Ascension in degrees (J2000.0)
+              example: 180.0
+            dec:
+              type: number
+              format: double
+              description: Declination in degrees (J2000.0)
+              example: 45.0
+        radius:
+          type: number
+          format: double
+          description: Expected distance from location in degrees
+          example: 1.0
+        sourceList:
+          type: array
+          items:
+            type: object
+            properties:
+              x:
+                type: number
+                format: double
+                description: X centroid pixel coordinate
+                example: 256.0
+              y:
+                type: number
+                format: double
+                description: Y centroid pixel coordinate
+                example: 256.0
+              brightness:
+                type: number
+                format: double
+                description: Brightness estimate
+                example: 1500.0
+              background:
+                type: number
+                format: double
+                description: Background estimate
+                example: 100.0
+        clipList:
+          type: array
+          items:
+            type: object
+            properties:
+              width:
+                type: integer
+                description: Width of the image clip in pixels
+                example: 64
+              height:
+                type: integer
+                description: Height of the image clip in pixels
+                example: 64
+              imageClip:
+                type: string
+                format: byte
+                description: Compressed image clip (base64 encoded)
+                example: "eJzT0yMAAGTvBe8="          
+    PlateSolveResult:
+      type: object
+      properties:
+        platesolveId:
+          type: string
+          description: Unique identifier for the plate solve request
+          example: "platesolve123"
+        solved:
+          type: boolean
+          description: Indicates if the image is solved
+          example: true
+        skyCoordinate:
+          type: object
+          properties:
+            ra:
+              type: number
+              format: double
+              description: Right Ascension of the image center
+              example: 180.1
+            dec:
+              type: number
+              format: double
+          
+security:
+  - BearerAuth: []
