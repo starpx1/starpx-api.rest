@@ -2,7 +2,13 @@ openapi: 3.0.0
 info:
   title: StarPx API
   version: 0.1.0
-  description: API for StarPx service, providing authentication and access token generation.
+  description: |
+    API for StarPx service, providing authentication and access token generation.
+
+    ## Resources
+
+    * [Official github API](https://github.com/starpx1/starpx-api.rest "Official github API")
+    * [Official doc rendered](https://starpx1.github.io/starpx-api.rest "Official doc rendered")
 servers:
   - url: https://api.starpx.com/v1
 paths:
@@ -11,10 +17,10 @@ paths:
       summary: Authenticate with a long-lived API key to receive a short-lived access token
       description: |
         Use this endpoint to authenticate with the starpx backend using your unique
-        long-lived API key which you can find in your user profile in the app or website. 
+        long-lived API key which you can find in your user profile in the app or website.
         When authorized, it will return an access token which must be included in all
         subsequent API calls (excluding this one).
-        
+
         Each subsequent API call must contain the HTTP request header:
         "Authorization: Bearer \<access token\>"
       parameters:
@@ -55,19 +61,19 @@ paths:
     post:
       summary: Create a new live imaging session
       description: |
-        When you start imaging a new object you can call this method. It will 
+        When you start imaging a new object you can call this method. It will
         create a new live imaging session in the backend. This allows you to upload
         your RAW files as you capture them. In addition, you can request a live preview
         to see how the image is progressing! When you finished collecting the RAW files
         you simply call the `finish` method and the final stack will be immediately
-        processed into a final image. 
-        
+        processed into a final image.
+
         You should only upload Light frames (of any filter type or bayered). As
         with all of starpx, calibration frames are unnecessary and discouraged
         since these take away valuable imaging time without significantly improving
         the final image. Essentially, uploaded calibration frames are simply ignored
-        by starpx and can be completely eliminated from your imaging workflow. 
-        
+        by starpx and can be completely eliminated from your imaging workflow.
+
         You can freely mix any filter types in the upload and you do not need
         to specify which filter a certain RAW frame is, starpx will figure this out.
       security:
@@ -114,7 +120,7 @@ paths:
       summary: Get upload URLs for a new RAW file for the imaging session
       description: |
         Use this endpoint to request upload URLs for a freshly captured RAW file.
-        
+
         Refer to [the backblaze API documentation how to use these](https://www.backblaze.com/apidocs/b2-get-upload-url) upload URLs.
         The `fileId` is kept for future reference and is needed to indicate a file finished uploading by POST'ing to this URL.
       security:
@@ -165,7 +171,7 @@ paths:
     post:
       summary: Indicate the RAW file has finished uploading
       description: |
-        Indicate you finished uploading a RAW file. 
+        Indicate you finished uploading a RAW file.
       security:
         - BearerAuth: []
       parameters:
@@ -214,7 +220,7 @@ paths:
       description: |
         Request the most up-to-date live pre-view (live stacking) of the imaging session.
         Typically, a few seconds after uploading a RAW file, the updated preview is ready.
-        
+
         You can see a new pre-view is available by keeping track of the increasing sequence number.
       security:
         - BearerAuth: []
@@ -248,7 +254,7 @@ paths:
                   seq:
                     type: integer
                     example: 13
-                    description: The sequence number of this preview                
+                    description: The sequence number of this preview
                   livePreviewUrl:
                     type: string
                     example: "https://cdn.starpx.com/live/abcdef/abcdef/some_image.jpg"
@@ -272,14 +278,14 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Unauthorized - Invalid or missing access token"                    
+                    example: "Unauthorized - Invalid or missing access token"
   /imagingsession/finish/{session-id}:
     post:
       summary: Finish the imaging session and get the gallery link
       description: |
         Call this endpoint to inidicate you are finished with this imaging session.
-        
-        After a short while your processed image will appear in your gallery. 
+
+        After a short while your processed image will appear in your gallery.
       security:
         - BearerAuth: []
       parameters:
@@ -324,7 +330,7 @@ paths:
     post:
       summary: Perform a plate solve operation
       description: |
-        Call this to quickly platesolve an image.      
+        Call this to quickly platesolve an image.
       requestBody:
         required: true
         content:
@@ -396,8 +402,8 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Unauthorized - Invalid or missing access token"                    
-                   
+                    example: "Unauthorized - Invalid or missing access token"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -533,7 +539,7 @@ components:
                 type: string
                 format: byte
                 description: Compressed image clip (base64 encoded)
-                example: "eJzT0yMAAGTvBe8="          
+                example: "eJzT0yMAAGTvBe8="
     PlateSolveResult:
       type: object
       properties:
@@ -556,6 +562,6 @@ components:
             dec:
               type: number
               format: double
-          
+
 security:
   - BearerAuth: []
