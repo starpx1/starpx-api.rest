@@ -38,13 +38,13 @@ paths:
               schema:
                 type: object
                 properties:
-                  apiVersion:
+                  api_version:
                     type: string
                     example: "0.1.0"
-                  accessToken:
+                  access_token:
                     type: string
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  expiresIn:
+                  expiry_time:
                     type: integer
                     example: 57600  # 16 hours in seconds
         '401':
@@ -92,7 +92,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  imagingSessionId:
+                  imaging_session_id:
                     type: string
                     example: "abc123"
         '400':
@@ -102,7 +102,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  errorMessage:
+                  error_message:
                     type: string
                     example: "Targetname is required"
         '401':
@@ -140,12 +140,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlateSolveResult'
                 properties:
-                  uploadUrls:
+                  upload_urls:
                     type: array
                     items:
                       type: string
                       example: "https://upload.example.com/part123"
-                  fileId:
+                  file_id:
                     type: string
                     example: "file123"
         '400':
@@ -155,7 +155,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  errorMessage:
+                  error_message:
                     type: string
                     example: "Invalid session ID"
         '401':
@@ -188,7 +188,7 @@ paths:
             schema:
               type: object
               properties:
-                fileId:
+                file_id:
                   type: string
                   example: "file123"
       responses:
@@ -201,7 +201,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  errorMessage:
+                  error_message:
                     type: string
                     example: "Missing or invalid file ID"
         '401':
@@ -239,15 +239,15 @@ paths:
               schema:
                 type: object
                 properties:
-                  acceptedRawFrames:
+                  accepted_raw_frames:
                     type: integer
                     example: 100
                     description: The number of RAW frames accepted by starpx
-                  rejectedRawFrames:
+                  rejected_raw_frames:
                     type: integer
                     example: 5
                     description: The number of RAW frames rejected by starpx
-                  rawFramesUsedForPreview:
+                  raw_frames_used_for_preview:
                     type: integer
                     example: 95
                     description: The number of RAW frames used in this preview
@@ -255,7 +255,7 @@ paths:
                     type: integer
                     example: 13
                     description: The sequence number of this preview
-                  livePreviewUrl:
+                  live_preview_url:
                     type: string
                     example: "https://cdn.starpx.com/live/abcdef/abcdef/some_image.jpg"
                     description: The URL of the preview JPG
@@ -266,7 +266,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  errorMessage:
+                  error_message:
                     type: string
                     example: "Invalid session ID"
         '401':
@@ -303,7 +303,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  galleryUrl:
+                  gallery_url:
                     type: string
                     example: "https://gallery.example.com/session123"
         '400':
@@ -313,7 +313,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  errorMessage:
+                  error_message:
                     type: string
                     example: "Invalid session ID"
         '401':
@@ -390,7 +390,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  errorMessage:
+                  error_message:
                     type: string
                     example: "Invalid platesolve ID"
         '401':
@@ -418,13 +418,13 @@ components:
     AuthenticationResponse:
       type: object
       properties:
-        apiVersion:
+        api_version:
           type: string
           example: "0.1.0"
-        accessToken:
+        access_token:
           type: string
           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        expiresIn:
+        expiry_time:
           type: integer
           example: 57600  # 16 hours in seconds
     NewImagingSession:
@@ -470,16 +470,16 @@ components:
     ImagingSessionResponse:
       type: object
       properties:
-        errorMessage:
+        error_message:
           type: string
           example: "Targetname is required"
-        imagingSessionId:
+        imaging_session_id:
           type: string
           example: "abc123"
     PlateSolveRequest:
       type: object
       properties:
-        skyCoordinate:
+        sky_coordinate:
           type: object
           properties:
             ra:
@@ -497,7 +497,7 @@ components:
           format: double
           description: Expected distance from location in degrees
           example: 1.0
-        sourceList:
+        source_list:
           type: array
           items:
             type: object
@@ -512,17 +512,17 @@ components:
                 format: double
                 description: Y centroid pixel coordinate
                 example: 256.0
-              brightness:
+              flux:
                 type: number
                 format: double
-                description: Brightness estimate
+                description: Isophotal flux / brightness (linear)
                 example: 1500.0
               background:
                 type: number
                 format: double
                 description: Background estimate
                 example: 100.0
-        clipList:
+        clip_list:
           type: array
           items:
             type: object
@@ -535,7 +535,7 @@ components:
                 type: integer
                 description: Height of the image clip in pixels
                 example: 64
-              imageClip:
+              image_clip:
                 type: string
                 format: byte
                 description: Compressed image clip (base64 encoded)
@@ -543,7 +543,7 @@ components:
     PlateSolveResult:
       type: object
       properties:
-        platesolveId:
+        platesolve_id:
           type: string
           description: Unique identifier for the plate solve request
           example: "platesolve123"
@@ -551,7 +551,7 @@ components:
           type: boolean
           description: Indicates if the image is solved
           example: true
-        skyCoordinate:
+        sky_coordinate:
           type: object
           properties:
             ra:
