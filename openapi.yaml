@@ -24,7 +24,7 @@ paths:
         Each subsequent API call must contain the HTTP request header:
         "Authorization: Bearer \<access token\>"
       parameters:
-        - name: apiKey
+        - name: api_key
           in: header
           required: true
           schema:
@@ -126,7 +126,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - name: session-id
+        - name: session_id
           in: path
           required: true
           schema:
@@ -175,7 +175,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - name: session-id
+        - name: session_id
           in: path
           required: true
           schema:
@@ -225,7 +225,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - name: session-id
+        - name: session_id
           in: path
           required: true
           schema:
@@ -289,7 +289,7 @@ paths:
       security:
         - BearerAuth: []
       parameters:
-        - name: session-id
+        - name: session_id
           in: path
           required: true
           schema:
@@ -407,9 +407,9 @@ paths:
 components:
   securitySchemes:
     ApiKeyAuth:
-      type: apiKey
+      type: api_key
       in: header
-      name: apiKey
+      name: api_key
     BearerAuth:
       type: http
       scheme: bearer
