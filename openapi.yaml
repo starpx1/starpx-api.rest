@@ -57,7 +57,7 @@ paths:
                   message:
                     type: string
                     example: "Unauthorized - API key is invalid"
-  /imagingsession/new:
+  /imagingsession/start:
     post:
       summary: Create a new live imaging session
       description: |
@@ -115,14 +115,52 @@ paths:
                   message:
                     type: string
                     example: "Unauthorized - Invalid or missing access token"
-  /imagingsession/upload/{session-id}:
+  /imagingsession/list:
     get:
+      summary: Get a list of active and past imaging sessions
+      description: |
+        Retrieve a list of active and finished imaging sessions. Finished (or stale)
+        imaging sessions will be stored for 30 days. The imaging session can remain
+        active for up to this period. After this period has elapsed the imaging session
+        will be closed and the images in this session (if any) will be processed and
+        added to your gallery. 
+        Imaging sessions that are marked finished are included for reference only and
+        cannot be reopened again. 
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: List returned successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NewImagingSession'
+        '401':
+          description: Unauthorized - Invalid or missing access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - Invalid or missing access token"
+  /imagingsession/fileupload/start/{session_id}:
+    post:
       summary: Get upload URLs for a new RAW file for the imaging session
       description: |
-        Use this endpoint to request upload URLs for a freshly captured RAW file.
-
-        Refer to [the backblaze API documentation how to use these](https://www.backblaze.com/apidocs/b2-get-upload-url) upload URLs.
-        The `fileId` is kept for future reference and is needed to indicate a file finished uploading by POST'ing to this URL.
+        Use this endpoint to request an upload URL for a freshly captured RAW file.
+        
+        When successfull, proceed to upload the file by performing a POST to the returned
+        `upload_url` with the binary file contents as the POST body.
+        
+        A successfull upload is indicated by a 200 return code from the POST to the
+        `upload_url`. The client must explicitly notify it is done with the file by
+        calling `/imagingsession/fileupload/finish/{file_id}` using the `file_id` returned
+        in this call.
+        
       security:
         - BearerAuth: []
       parameters:
@@ -131,23 +169,26 @@ paths:
           required: true
           schema:
             type: string
-          description: The ID of the imaging session
+          description: The ID of the imaging session        
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileUploadRequest'
       responses:
         '200':
           description: Upload URLs retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlateSolveResult'
                 properties:
-                  upload_urls:
-                    type: array
-                    items:
-                      type: string
-                      example: "https://upload.example.com/part123"
+                  upload_url:
+                    type: string
+                    example: "https://upload-us13.starpx.com/upload/weeaffwe41"
                   file_id:
                     type: string
-                    example: "file123"
+                    example: "RHiozIpAP4R8fD"
         '400':
           description: Bad request - Invalid session ID
           content:
@@ -168,34 +209,29 @@ paths:
                   message:
                     type: string
                     example: "Unauthorized - Invalid or missing access token"
+  /imagingsession/fileupload/finish/{file_id}:
     post:
-      summary: Indicate the RAW file has finished uploading
+      summary: Mark an file as finished uploading. 
       description: |
-        Indicate you finished uploading a RAW file.
+        Use this to mark a file as finished uploading.
+        
+        The client must only call this after the file upload has not encountered
+        any errors. This will instruct starpx that it can use this file in
+        updating the live view. 
       security:
         - BearerAuth: []
       parameters:
-        - name: session_id
+        - name: file_id
           in: path
           required: true
           schema:
             type: string
           description: The ID of the imaging session
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                file_id:
-                  type: string
-                  example: "file123"
       responses:
         '200':
-          description: File upload completed successfully
+          description: Call returned succesfully
         '400':
-          description: Bad request - Missing or invalid file ID
+          description: Bad request - Invalid file ID or file already marked as finished
           content:
             application/json:
               schema:
@@ -203,7 +239,7 @@ paths:
                 properties:
                   error_message:
                     type: string
-                    example: "Missing or invalid file ID"
+                    example: "Invalid session ID"
         '401':
           description: Unauthorized - Invalid or missing access token
           content:
@@ -214,14 +250,12 @@ paths:
                   message:
                     type: string
                     example: "Unauthorized - Invalid or missing access token"
-  /imagingsession/live-preview/{session-id}:
+  /imagingsession/preview/{session_id}:
     get:
-      summary: Get live preview details of the imaging session
+      summary: Get live preview of the imaging session
       description: |
         Request the most up-to-date live pre-view (live stacking) of the imaging session.
         Typically, a few seconds after uploading a RAW file, the updated preview is ready.
-
-        You can see a new pre-view is available by keeping track of the increasing sequence number.
       security:
         - BearerAuth: []
       parameters:
@@ -239,26 +273,18 @@ paths:
               schema:
                 type: object
                 properties:
-                  accepted_raw_frames:
-                    type: integer
-                    example: 100
-                    description: The number of RAW frames accepted by starpx
-                  rejected_raw_frames:
-                    type: integer
-                    example: 5
-                    description: The number of RAW frames rejected by starpx
-                  raw_frames_used_for_preview:
-                    type: integer
-                    example: 95
-                    description: The number of RAW frames used in this preview
                   seq:
                     type: integer
                     example: 13
                     description: The sequence number of this preview
-                  live_preview_url:
+                  preview_url:
                     type: string
-                    example: "https://cdn.starpx.com/live/abcdef/abcdef/some_image.jpg"
-                    description: The URL of the preview JPG
+                    example: "https://upload-us13.starpx.com/preview/weeaffwe41/14.jpg"
+                    description: The URL of the preview image
+                  starless_url:
+                    type: string
+                    example: "https://upload-us13.starpx.com/preview/weeaffwe41/15.jpg"
+                    description: The URL of the preview image
         '400':
           description: Bad request - Invalid session ID
           content:
@@ -279,7 +305,48 @@ paths:
                   message:
                     type: string
                     example: "Unauthorized - Invalid or missing access token"
-  /imagingsession/finish/{session-id}:
+  /imagingsession/abort/{session_id}:
+    post:
+      summary: Aborts the imaging session
+      description: |
+        Call this endpoint to inidicate you are aborting this imaging session.
+
+        No image will be computed and put in your gallery. This is usefull if
+        something went wrong during capture and you don't want to consume
+        space or compute tokens with bad images.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ID of the imaging session
+      responses:
+        '200':
+          description: Imaging session aborted successfully
+        '400':
+          description: Bad request - Invalid session ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error_message:
+                    type: string
+                    example: "Invalid session ID"
+        '401':
+          description: Unauthorized - Invalid or missing access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Unauthorized - Invalid or missing access token"                    
+  /imagingsession/finish/{session_id}:
     post:
       summary: Finish the imaging session and get the gallery link
       description: |
@@ -298,14 +365,6 @@ paths:
       responses:
         '200':
           description: Imaging session finished successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  gallery_url:
-                    type: string
-                    example: "https://gallery.example.com/session123"
         '400':
           description: Bad request - Invalid session ID
           content:
@@ -325,7 +384,7 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Unauthorized - Invalid or missing access token"
+                    example: "Unauthorized - Invalid or missing access token"  
   /platesolve:
     post:
       summary: Perform a plate solve operation
@@ -407,9 +466,9 @@ paths:
 components:
   securitySchemes:
     ApiKeyAuth:
-      type: api_key
+      type: apiKey
       in: header
-      name: api_key
+      name: apiKey
     BearerAuth:
       type: http
       scheme: bearer
@@ -430,7 +489,7 @@ components:
     NewImagingSession:
       type: object
       properties:
-        localTime:
+        local_time:
           type: string
           format: date-time
           example: "2024-05-27T10:00:00Z"
@@ -442,13 +501,13 @@ components:
               type: number
               format: float
               example: 34.0522
-              nullable: true
+              nullable: false
             lon:
               type: number
               format: float
               example: -118.2437
-              nullable: true
-          nullable: true
+              nullable: false
+          nullable: false
         targetname:
           type: string
           example: "Mars"
@@ -460,13 +519,13 @@ components:
               type: number
               format: float
               example: 14.660
-              nullable: true
+              nullable: false
             dec:
               type: number
               format: float
               example: -60.835
-              nullable: true
-          nullable: true
+              nullable: false
+          nullable: false
     ImagingSessionResponse:
       type: object
       properties:
@@ -562,6 +621,20 @@ components:
             dec:
               type: number
               format: double
-
+    FileUploadRequest:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Local path of the file
+          example: "C:\\Imaging\\M33_light_300s.fit"
+        compression:
+          type: string
+          description: Indicates compression scheme used (if any)
+          example: "zip"
+        size:
+          type: number
+          description: Size of the file in bytes
+          example: 16777216
 security:
   - BearerAuth: []
