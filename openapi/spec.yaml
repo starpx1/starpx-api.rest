@@ -1,0 +1,831 @@
+openapi: 3.0.3
+info:
+  title: SPX User API
+  description: |
+    User-facing API for astronomical plate solving services provided by StarPX.
+
+    ## Authentication Flow
+    1. Obtain an API key from your partner/provider
+    2. Authenticate using `/user/authenticate` with your API key
+    3. Receive a JWT token (valid for 4 hours)
+    4. Use the JWT token in the `Authorization: Bearer <token>` header for all subsequent requests
+
+    ## Job Lifecycle
+    1. **Create Job** - Submit job with target image metadata
+    2. **Upload Image** (optional) - If image upload is required, upload the file
+    3. **Processing** - Job automatically processes (1-15 seconds)
+    4. **Check Status** - Poll for completion (`solved` or `fail`)
+
+    ## Rate Limits
+    - JWT tokens expire after 4 hours
+    - Maximum 5,000 sources per source list
+    - Maximum file upload size: 100MB
+
+  version: 1.0.0
+  contact:
+    name: SPX Support
+    url: https://starpx.com
+servers:
+  - url: https://xapi.starpx.com
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Platesolve
+    description: Plate solving job management
+
+paths:
+  /user/authenticate:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate user with API key
+      description: |
+        Exchange your API key for a JWT token. The token is valid for 4 hours and must be included
+        in the Authorization header for all subsequent requests.
+      operationId: authenticateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - api_key
+              properties:
+                api_key:
+                  type: string
+                  description: Your unique API key provided by your partner
+                  example: "xVRczQ6HNh"
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  token:
+                    type: string
+                    description: JWT token for authenticating subsequent requests
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  expiry:
+                    type: integer
+                    description: Token validity duration in seconds (14400 = 4 hours)
+                    example: 14400
+        '400':
+          description: Bad request - API key missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: "error"
+                error: "api_key is required"
+        '401':
+          description: Unauthorized - Invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: "error"
+                error: "invalid API key"
+
+  /user/platesolve/new:
+    post:
+      tags:
+        - Platesolve
+      summary: Create a new plate solving job
+      description: |
+        Submit a new plate solving job with target image metadata and optional source list or image data.
+
+        ## Job Execution Logic
+        - **Immediate start**: Job starts immediately if `source_list` is provided WITHOUT `image` field
+        - **Wait for upload**: Job waits for image upload if `image` field is present (regardless of source_list)
+        - Job automatically completes after 1-15 seconds with status `solved` or `fail`
+
+        ## Required Fields
+        - `job_info.target_image.file_name` (mandatory)
+        - `job_info.target_image.width` (mandatory)
+        - `job_info.target_image.height` (mandatory)
+
+        ## Source List Validation
+        - Maximum 5,000 sources allowed
+        - Each source must have: `x`, `y`, `f`, `b` (mandatory)
+        - Optional fields per source: `p`, `a`, `t`
+
+      operationId: createPlatesolveJob
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatesolveJobRequest'
+            examples:
+              sourceListOnly:
+                summary: Source list only (starts immediately)
+                value:
+                  job_info:
+                    target_image:
+                      file_name: "M31_luminance_300s.fits"
+                      creation_date: 1699228800
+                      width: 4096
+                      height: 4096
+                      mime_type: "image/fits"
+                      image_size: 67108864
+                      fits_order: "up"
+                    hints:
+                      center_ra: 10.6847
+                      center_dec: 41.2687
+                      fov: 1.5
+                      app: 0.52
+                      epoch: "2000.0"
+                  source_list:
+                    sources:
+                      - x: 1024.34
+                        y: 2048.67
+                        f: 125430.5
+                        b: 1205.3
+                        p: 45230.2
+                        a: 28.6
+                        t: 8.4
+                      - x: 2156.89
+                        y: 1834.12
+                        f: 98234.8
+                        b: 1198.7
+                        p: 38920.4
+                        a: 24.3
+                        t: 7.9
+                    scale: 1.0
+                    crop:
+                      left_x: 0
+                      bot_y: 0
+              withImageUpload:
+                summary: With image upload required (waits for upload)
+                value:
+                  job_info:
+                    target_image:
+                      file_name: "NGC7000_Ha_600s.fits"
+                      creation_date: 1699228800
+                      width: 4096
+                      height: 4096
+                      mime_type: "image/fits"
+                      image_size: 67108864
+                      fits_order: "down"
+                    hints:
+                      center_ra: 312.7667
+                      center_dec: 44.2833
+                      fov: 2.1
+                      app: 0.65
+                      epoch: "2000.0"
+                  image:
+                    file_name: "NGC7000_Ha_600s_preview.jpg"
+                    creation_date: 1699228800
+                    width: 2048
+                    height: 2048
+                    mime_type: "image/jpeg"
+                    fits_order: "down"
+                    scale: 2.0
+                    crop:
+                      left_x: 512
+                      bot_y: 512
+              minimal:
+                summary: Minimal request (waits for upload)
+                value:
+                  job_info:
+                    target_image:
+                      file_name: "test.fits"
+                      width: 1920
+                      height: 1080
+      responses:
+        '200':
+          description: Job created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  job_id:
+                    type: string
+                    description: Unique job identifier (16 characters)
+                    example: "rzB3T4viZiFIprKw"
+                  image_post_url:
+                    type: string
+                    description: Upload endpoint (only present if job is waiting for image upload)
+                    example: "/user/platesolve/rzB3T4viZiFIprKw/upload"
+              examples:
+                immediateStart:
+                  summary: Job started immediately
+                  value:
+                    status: "success"
+                    job_id: "5N2FIUR6EiBITG4H"
+                waitingForUpload:
+                  summary: Job waiting for upload
+                  value:
+                    status: "success"
+                    job_id: "rzB3T4viZiFIprKw"
+                    image_post_url: "/user/platesolve/rzB3T4viZiFIprKw/upload"
+        '400':
+          description: Bad request - Invalid or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingJobInfo:
+                  summary: Missing job_info
+                  value:
+                    status: "error"
+                    error: "job_info is required"
+                missingFileName:
+                  summary: Missing file_name
+                  value:
+                    status: "error"
+                    error: "job_info.target_image.file_name is required"
+                tooManySources:
+                  summary: Too many sources
+                  value:
+                    status: "error"
+                    error: "source_list.sources cannot exceed 5000 items"
+        '401':
+          description: Unauthorized - Invalid or expired JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /user/platesolve/{job_id}/status:
+    get:
+      tags:
+        - Platesolve
+      summary: Get job status
+      description: |
+        Retrieve the current status of a plate solving job. Poll this endpoint to check job completion.
+
+        ## Job Statuses
+        - `waiting_image` - Job is waiting for image upload
+        - `submitted` - Job submitted to platesolve queue
+        - `busy` - Job is currently processing
+        - `solved` - Job completed successfully
+        - `fail` - Job failed to solve
+
+        ## Timestamps
+        - `launch_time` - When job started processing (Unix timestamp)
+        - `solve_time` - When job completed (Unix timestamp, only present when solved/failed)
+
+      operationId: getJobStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: The unique job identifier returned from job creation
+          schema:
+            type: string
+            example: "rzB3T4viZiFIprKw"
+      responses:
+        '200':
+          description: Job status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  job_status:
+                    type: string
+                    enum: [waiting_image, submitted, busy, solved, fail, failed]
+                    description: |
+                      Current job status (read from Redis key: job:platesolve{job_id}:status).
+                      - waiting_image: Job created, waiting for image upload
+                      - submitted: Job submitted to platesolve queue
+                      - busy: Holmes is processing the job
+                      - solved: Successfully plate solved
+                      - fail/failed: Plate solve failed
+                    example: "solved"
+                  launch_time:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp when job started processing
+                    example: 1762357842
+                  solve_time:
+                    type: integer
+                    format: int64
+                    nullable: true
+                    description: Unix timestamp when job completed (null if still processing)
+                    example: 1762357854
+                  solution:
+                    type: object
+                    nullable: true
+                    description: |
+                      Plate solve solution data (extracted from solver.projection in solve result).
+                      Only present when job_status is "solved". Contains astrometric solution including
+                      center coordinates, bounding box, orientation, WCS projection parameters, etc.
+                      Null for all other statuses (waiting_image, submitted, busy, fail).
+                    properties:
+                      center_ra:
+                        type: number
+                        description: Right Ascension of image center in degrees
+                        example: 159.56050951686794
+                      center_de:
+                        type: number
+                        description: Declination of image center in degrees
+                        example: -58.68924318865147
+                      orientation:
+                        type: number
+                        description: Image orientation in degrees
+                        example: 257.41421666011445
+                      parity:
+                        type: integer
+                        description: Image parity (1 or -1)
+                        example: 1
+                      scale_app:
+                        type: number
+                        description: Apparent scale in arcsec/pixel
+                        example: 0.543709614446011
+                      width:
+                        type: integer
+                        description: Image width in pixels
+                        example: 4096
+                      height:
+                        type: integer
+                        description: Image height in pixels
+                        example: 4096
+                      pixel_area:
+                        type: number
+                        description: Pixel area
+                        example: 16
+                      world_area:
+                        type: number
+                        description: World area in square degrees
+                        example: 0.38269159135410835
+                      bbox:
+                        type: array
+                        description: Bounding box coordinates (RA/Dec polygon)
+                        items:
+                          type: object
+                          properties:
+                            ra:
+                              type: number
+                            dec:
+                              type: number
+                      proj_tan:
+                        type: object
+                        description: TAN projection WCS parameters
+                        properties:
+                          crval1:
+                            type: number
+                            description: Reference RA
+                          crval2:
+                            type: number
+                            description: Reference Dec
+                          crpix1:
+                            type: number
+                            description: Reference pixel X
+                          crpix2:
+                            type: number
+                            description: Reference pixel Y
+                          cd11:
+                            type: number
+                          cd12:
+                            type: number
+                          cd21:
+                            type: number
+                          cd22:
+                            type: number
+                          flipy:
+                            type: integer
+                          sip_a:
+                            type: array
+                            items:
+                              type: number
+                          sip_ap:
+                            type: array
+                            items:
+                              type: number
+                          sip_b:
+                            type: array
+                            items:
+                              type: number
+                          sip_bp:
+                            type: array
+                            items:
+                              type: number
+              examples:
+                waiting:
+                  summary: Waiting for upload
+                  value:
+                    status: "success"
+                    job_status: "waiting_image"
+                submitted:
+                  summary: Submitted to platesolve queue
+                  value:
+                    status: "success"
+                    job_status: "submitted"
+                    launch_time: 1762357606
+                processing:
+                  summary: Currently processing
+                  value:
+                    status: "success"
+                    job_status: "busy"
+                    launch_time: 1762357842
+                solved:
+                  summary: Successfully solved
+                  value:
+                    status: "success"
+                    job_status: "solved"
+                    launch_time: 1762357842
+                    solve_time: 1762357854
+                    solution:
+                      center_ra: 159.56050951686794
+                      center_de: -58.68924318865147
+                      orientation: 257.41421666011445
+                      parity: 1
+                      scale_app: 0.543709614446011
+                      width: 4096
+                      height: 4096
+                      pixel_area: 16
+                      world_area: 0.38269159135410835
+                      type: "tan"
+                      bbox:
+                        - ra: 159.11158863158835
+                          dec: -58.31951168872647
+                        - ra: 158.97995351939014
+                          dec: -58.621270339694256
+                        - ra: 158.8454868113319
+                          dec: -58.92271748319198
+                      proj_tan:
+                        crval1: 159.374545901
+                        crval2: -58.6401675065
+                        crpix1: 1870.53692627
+                        crpix2: 1353.39221191
+                        cd11: -0.0000329189747641
+                        cd12: 0.000147442865646
+                        cd21: -0.000147344580309
+                        cd22: -0.0000329684994992
+                        flipy: 1
+                        sip_a: [0.0, 0.0, 5.46495259436E-8, 0.0, -6.45480135502E-7, -8.35422141913E-8]
+                        sip_ap: [-0.000208454612496, -1.32683935315E-7, -5.47249600775E-8, 0.00000125384859444, 6.46681692785E-7, 8.37307262527E-8]
+                        sip_b: [0.0, 0.0, -6.54299141219E-7, 0.0, -6.72115256395E-9, -2.44929729408E-7]
+                        sip_bp: [-0.00197544868301, 0.00000200243511212, 6.5608302092E-7, -5.53694919563E-8, 6.93515242775E-9, 2.45394637675E-7]
+                failed:
+                  summary: Failed to solve
+                  value:
+                    status: "success"
+                    job_status: "fail"
+                    launch_time: 1762357842
+                    solve_time: 1762357854
+        '401':
+          description: Unauthorized - Invalid or expired JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Job belongs to different user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: "error"
+                error: "access denied"
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: "error"
+                error: "job not found"
+
+  /user/platesolve/{job_id}/upload:
+    post:
+      tags:
+        - Platesolve
+      summary: Upload image file for job
+      description: |
+        Upload an image file for a job that is waiting for upload. The job must be in `waiting_image` status.
+
+        ## Upload Restrictions
+        - Maximum file size: 100MB
+        - Only one upload per job (subsequent uploads will be rejected)
+        - Job must be in `waiting_image` status
+        - File is stored as `received/{job_id}_{filename}`
+
+        ## After Upload
+        - Job status changes to `busy`
+        - Processing starts automatically
+        - Job completes in 1-15 seconds with status `solved` or `fail`
+
+      operationId: uploadJobImage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: The unique job identifier
+          schema:
+            type: string
+            example: "rzB3T4viZiFIprKw"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The image file to upload (FITS, JPEG, PNG, etc.)
+      responses:
+        '200':
+          description: File uploaded successfully, job processing started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+        '400':
+          description: Bad request - Upload error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                alreadyUploaded:
+                  summary: Image already uploaded
+                  value:
+                    status: "error"
+                    error: "image already uploaded for this job"
+                notWaiting:
+                  summary: Job not waiting for upload
+                  value:
+                    status: "error"
+                    error: "job is not waiting for image upload"
+                noFile:
+                  summary: No file provided
+                  value:
+                    status: "error"
+                    error: "file is required"
+        '401':
+          description: Unauthorized - Invalid or expired JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Job belongs to different user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from `/user/authenticate` endpoint
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - error
+      properties:
+        status:
+          type: string
+          example: "error"
+        error:
+          type: string
+          description: Human-readable error message
+          example: "invalid API key"
+
+    PlatesolveJobRequest:
+      type: object
+      required:
+        - job_info
+      properties:
+        job_info:
+          type: object
+          required:
+            - target_image
+          properties:
+            target_image:
+              $ref: '#/components/schemas/TargetImage'
+            hints:
+              $ref: '#/components/schemas/SolvingHints'
+        source_list:
+          $ref: '#/components/schemas/SourceList'
+        image:
+          $ref: '#/components/schemas/ImageMetadata'
+
+    TargetImage:
+      type: object
+      required:
+        - file_name
+        - width
+        - height
+      properties:
+        file_name:
+          type: string
+          description: Name of the target image file
+          example: "M31_luminance_300s.fits"
+        creation_date:
+          type: integer
+          format: int64
+          description: Unix timestamp when image was created
+          example: 1699228800
+        width:
+          type: integer
+          description: Image width in pixels (mandatory)
+          example: 4096
+        height:
+          type: integer
+          description: Image height in pixels (mandatory)
+          example: 4096
+        mime_type:
+          type: string
+          description: MIME type of the image
+          example: "image/fits"
+        image_size:
+          type: integer
+          description: Image file size in bytes
+          example: 67108864
+        fits_order:
+          type: string
+          enum: [up, down]
+          description: FITS coordinate order (up = bottom-left origin, down = top-left origin)
+          example: "up"
+
+    SolvingHints:
+      type: object
+      description: Optional hints to assist plate solving
+      properties:
+        center_ra:
+          type: number
+          format: double
+          description: Right ascension of field center in degrees (0-360)
+          example: 10.6847
+        center_dec:
+          type: number
+          format: double
+          description: Declination of field center in degrees (-90 to +90)
+          example: 41.2687
+        fov:
+          type: number
+          format: double
+          description: Field of view in degrees
+          example: 1.5
+        app:
+          type: number
+          format: double
+          description: Arcseconds per pixel (image scale)
+          example: 0.52
+        epoch:
+          type: string
+          description: Epoch date in Julian Date format
+          example: "2000.0"
+
+    SourceList:
+      type: object
+      description: List of detected sources/stars in the image
+      properties:
+        sources:
+          type: array
+          maxItems: 5000
+          description: Array of detected sources (max 5000)
+          items:
+            $ref: '#/components/schemas/Source'
+        scale:
+          type: number
+          format: double
+          description: Scale factor relative to target image
+          example: 1.0
+        crop:
+          $ref: '#/components/schemas/CropInfo'
+
+    Source:
+      type: object
+      required:
+        - x
+        - y
+        - f
+        - b
+      properties:
+        x:
+          type: number
+          format: double
+          description: X coordinate in pixels (mandatory)
+          example: 1024.34
+        y:
+          type: number
+          format: double
+          description: Y coordinate in pixels (mandatory)
+          example: 2048.67
+        f:
+          type: number
+          format: double
+          description: Flux - sum of pixel values within measurement annulus (mandatory)
+          example: 125430.5
+        b:
+          type: number
+          format: double
+          description: Average background value (mandatory)
+          example: 1205.3
+        p:
+          type: number
+          format: double
+          description: Peak value (optional)
+          example: 45230.2
+        a:
+          type: number
+          format: double
+          description: Area in square pixels (optional)
+          example: 28.6
+        t:
+          type: number
+          format: double
+          description: Threshold SNR (signal-to-noise ratio) (optional)
+          example: 8.4
+
+    ImageMetadata:
+      type: object
+      description: Metadata for a processed/preview image
+      properties:
+        file_name:
+          type: string
+          description: Name of the image file
+          example: "preview.jpg"
+        creation_date:
+          type: integer
+          format: int64
+          description: Unix timestamp when image was created
+          example: 1699228800
+        width:
+          type: integer
+          description: Image width in pixels (mandatory)
+          example: 2048
+        height:
+          type: integer
+          description: Image height in pixels (mandatory)
+          example: 2048
+        mime_type:
+          type: string
+          description: MIME type of the image (mandatory)
+          example: "image/jpeg"
+        fits_order:
+          type: string
+          enum: [up, down]
+          description: FITS coordinate order
+          example: "down"
+        scale:
+          type: number
+          format: double
+          description: Scale factor relative to target image
+          example: 2.0
+        crop:
+          $ref: '#/components/schemas/CropInfo'
+
+    CropInfo:
+      type: object
+      description: Crop offset information
+      properties:
+        left_x:
+          type: integer
+          description: Left edge X offset in pixels
+          example: 0
+        bot_y:
+          type: integer
+          description: Bottom edge Y offset in pixels
+          example: 0
